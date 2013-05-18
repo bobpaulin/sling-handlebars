@@ -61,7 +61,7 @@ public class HandlebarsScriptEngine extends AbstractSlingScriptEngine {
             
             String handlebarsScript = IOUtils.toString(scriptReader);
             StringBuffer scriptBuffer = new StringBuffer();
-            scriptBuffer.append("renderTemplate(");
+            scriptBuffer.append("compileAndRenderTemplate(");
             scriptBuffer.append(ScriptUtils.toJSMultiLineString(handlebarsScript));
             scriptBuffer.append(", ");
             scriptBuffer.append(jsonInput.toString());
