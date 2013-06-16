@@ -25,6 +25,7 @@ import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.commons.osgi.PropertiesUtil;
 
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.osgi.service.component.ComponentContext;
 
@@ -34,6 +35,7 @@ import org.apache.sling.webresource.util.JCRUtils;
 import org.apache.sling.webresource.util.ScriptUtils;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.time.StopWatch;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,10 +64,14 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
     
     public void activate(final ComponentContext context) throws Exception
     {
+        StopWatch stopWatch = new StopWatch();
+        stopWatch.start();
         Dictionary config = context.getProperties();
         handlebarsCompilerPath = PropertiesUtil.toString(config.get(HANDLEBARS_COMPILER_PATH), "/system/handlebars/handlebars.js");
         handlebarsCachePath = PropertiesUtil.toString(config.get(HANDLEBARS_CACHE_PATH), "/var/handlebars");
         loadHandlebarsCompiler();
+        stopWatch.stop();
+        log.debug("Completed Handlebars Compiler Startup " + stopWatch);
     }
     
     public InputStream compile(InputStream handlebarsStream) throws WebResourceCompileException
@@ -94,12 +100,17 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
             }
             scriptBuffer.append(");");
             StringReader handlebarsReader = new StringReader(scriptBuffer.toString());
-
+            StopWatch stopWatch = new StopWatch();
+            stopWatch.start();
             Context rhinoContext = getContext();
-            rhinoContext.initStandardObjects(scope);
-
-            String compiledScript = (String)rhinoContext.evaluateReader(scope, handlebarsReader, "HandlebarsCompile", 1, null);
+            Scriptable scriptScope = rhinoContext.newObject(scope);
+            scriptScope.setPrototype(scope);
+            scriptScope.setParentScope(null);
+            
+            String compiledScript = (String)rhinoContext.evaluateReader(scriptScope, handlebarsReader, "HandlebarsCompile", 1, null);
             compiledScript = "Handlebars.template(" + compiledScript + ");";
+            stopWatch.stop();
+            log.debug("Completed Handlebars Precompile " + stopWatch);
             return new ByteArrayInputStream(compiledScript.getBytes());
         }
         catch(Exception e)

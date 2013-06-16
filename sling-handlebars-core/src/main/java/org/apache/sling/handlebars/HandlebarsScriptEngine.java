@@ -18,6 +18,7 @@ import javax.jcr.RepositoryException;
 import javax.jcr.ValueFormatException;
 
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.osgi.service.component.ComponentContext;
 
@@ -34,14 +35,21 @@ import org.apache.sling.commons.osgi.PropertiesUtil;
 
 import org.apache.commons.io.IOUtils;
 
+import org.apache.commons.lang.time.StopWatch;
+
 import org.apache.sling.webresource.util.JCRUtils;
 import org.apache.sling.webresource.util.ScriptUtils;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HandlebarsScriptEngine extends AbstractSlingScriptEngine {
     
     private String handlebarsCompilerPath;
     
     private ScriptableObject scope;
+    
+    private final Logger log = LoggerFactory.getLogger(getClass());
     
     public HandlebarsScriptEngine(ScriptEngineFactory factory, ScriptableObject scope) {
         super(factory);
@@ -68,9 +76,17 @@ public class HandlebarsScriptEngine extends AbstractSlingScriptEngine {
             scriptBuffer.append(");");
             StringReader handlebarsReader = new StringReader(scriptBuffer.toString());
     
+            StopWatch stopWatch = new StopWatch();
+            stopWatch.start();
+            
             Context rhinoContext = getRhinoContext();
-    
-            renderedTemplate = (String)rhinoContext.evaluateReader(scope, handlebarsReader, "HandlebarsRender", 1, null);
+            Scriptable scriptScope = rhinoContext.newObject(scope);
+            scriptScope.setPrototype(scope);
+            scriptScope.setParentScope(null);
+            
+            renderedTemplate = (String)rhinoContext.evaluateReader(scriptScope, handlebarsReader, "HandlebarsRender", 1, null);
+            stopWatch.stop();
+            log.debug("Completed Handlebars Compile " + stopWatch);
             response.getWriter().write(renderedTemplate);
         }catch(Exception e)
         {
