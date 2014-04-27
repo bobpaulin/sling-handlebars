@@ -10,7 +10,7 @@
 		<dependency>
 			<groupId>org.apache.sling</groupId>
 			<artifactId>sling-web-resource</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>0.1.0-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>javax.jcr</groupId>
@@ -73,11 +73,6 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>rhino</groupId>
-			<artifactId>js</artifactId>
-			<version>1.7R2</version>
-		</dependency>
-		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-api</artifactId>
 			<version>1.6.4</version>
@@ -138,9 +133,6 @@
 							org.apache.xmlbeans;resolution:=optional,
 							*
 						</Import-Package>
-						<Embed-Dependency>
-							js;inline=true
-						</Embed-Dependency>
 						<Sling-Initial-Content>
 							SLING-INF/system/handlebars;overwrite:=true;uninstall:=true;path:=/system/handlebars
 						</Sling-Initial-Content>
@@ -174,7 +166,7 @@
 									<goal>install</goal>
 								</goals>
 								<configuration>
-									<slingUrl>http://localhost:8080/system/console</slingUrl>
+									<slingUrl>http://localhost:4502/system/console</slingUrl>
 									<user>admin</user>
 									<password>admin</password>
 								</configuration>

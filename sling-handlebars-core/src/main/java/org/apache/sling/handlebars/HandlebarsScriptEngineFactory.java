@@ -3,16 +3,17 @@ package org.apache.sling.handlebars;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.SequenceInputStream;
 import java.util.Dictionary;
 
 import javax.script.ScriptEngine;
-
 import javax.jcr.Node;
 import javax.jcr.PathNotFoundException;
 import javax.jcr.Property;
 import javax.jcr.RepositoryException;
 import javax.jcr.ValueFormatException;
 
+import org.apache.commons.lang.time.StopWatch;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
@@ -24,15 +25,14 @@ import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.commons.osgi.PropertiesUtil;
 import org.apache.sling.api.resource.LoginException;
-
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptableObject;
-
 import org.osgi.framework.BundleContext;
 import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.apache.sling.webresource.WebResourceScriptRunner;
+import org.apache.sling.webresource.WebResourceScriptRunnerFactory;
 import org.apache.sling.webresource.util.JCRUtils;
 import org.apache.sling.webresource.util.ScriptUtils;
 
@@ -51,21 +51,30 @@ public class HandlebarsScriptEngineFactory extends AbstractScriptEngineFactory{
     @Reference
     private ResourceResolverFactory resourceResolverFactory;
     
+    @Reference
+    private WebResourceScriptRunnerFactory webResourceRunnerFactory;
+    
     private ScriptableObject scope = null;
     
     @org.apache.felix.scr.annotations.Property(label="Handlebars Compiler Script Path", value="/system/handlebars/handlebars.js")
     private final static String HANDLEBARS_COMPILER_PATH = "handlebars.compiler.path";
     
-    private String languageVersion;
-    
     private String handlebarsCompilerPath;
     
+    private WebResourceScriptRunner scriptRunner;
+    
     public ScriptEngine getScriptEngine() {
-        return new HandlebarsScriptEngine(this, scope);
+    	StopWatch stopWatch = new StopWatch();
+    	stopWatch.start();
+        ScriptEngine result = new HandlebarsScriptEngine(this, this.scriptRunner);
+        
+        stopWatch.stop();
+        log.info("Script Engine Handlebars created: " + stopWatch);
+        return result;
     }
     
     public String getLanguageVersion() {
-        return languageVersion;
+        return "1.0.0";
     }
     
     protected void activate(ComponentContext context) throws Exception {
@@ -78,33 +87,32 @@ public class HandlebarsScriptEngineFactory extends AbstractScriptEngineFactory{
         setExtensions(HBS_SCRIPT_EXTENSION, HANDLEBARS_SCRIPT_EXTENSION);
         setMimeTypes("text/javascript", "text/x-handlebars-template",
                 "application/javascript");
+        setEngineVersion("1.0.0");
         setNames("javascript", HBS_SCRIPT_EXTENSION, HANDLEBARS_SCRIPT_EXTENSION);
         
-        loadHandlebars();
-    }
-    
-    protected void deactivate(ComponentContext context) {
+        loadHandlebarsScriptRunner();
         
     }
-    
-    public String getLanguageName() {
-        return "Handlebars";
-    }
-    
-    protected void loadHandlebars() throws RepositoryException, LoginException, IOException {
-        Context rhinoContext = getRhinoContext();
+
+	private void loadHandlebarsScriptRunner() throws LoginException,
+			RepositoryException {
+		StopWatch stopWatch = new StopWatch();
+    	stopWatch.start();
         ResourceResolver resolver = null;
         try{
             resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
             
             InputStream handlebarsCompilerStream = JCRUtils.getFileResourceAsStream(resolver, handlebarsCompilerPath);
-            scope = (ScriptableObject) rhinoContext.initStandardObjects(null);
-            
-            rhinoContext.evaluateReader(scope, new InputStreamReader(handlebarsCompilerStream), "handlebars.js", 1, null);
             
             InputStream handlebarsRenderStream = JCRUtils.getFileResourceAsStream(resolver, "/system/handlebars/handlebars-renderer.js");
             
-            rhinoContext.evaluateReader(scope, new InputStreamReader(handlebarsRenderStream), "handlebars-renderer.js", 1, null);
+            InputStream consolidatedHandlebarsScriptStream = new SequenceInputStream(handlebarsCompilerStream, handlebarsRenderStream);
+            
+            this.scriptRunner = this.webResourceRunnerFactory.createRunner("handlebars.js", consolidatedHandlebarsScriptStream);
+            
+            //Load Partials by searching WebResource Groups for HBS files and registering them
+            
+            //Load Helpers by using a predefined helper directory and loading all JS Files 
         }
         finally
         {
@@ -113,25 +121,16 @@ public class HandlebarsScriptEngineFactory extends AbstractScriptEngineFactory{
                 resolver.close();
             }
         }
+        stopWatch.stop();
+        log.info("Handlebars Loaded: " + stopWatch);
+	}
+    
+    protected void deactivate(ComponentContext context) {
+        
     }
     
-    /**
-     * 
-     * Retrieves Rhino Context and sets language and optimizations.
-     * 
-     * @return
-     */
-    public Context getRhinoContext()
-    {
-        Context result = null;
-        if(Context.getCurrentContext() == null)
-        {
-            Context.enter(); 
-        }
-        result = Context.getCurrentContext();
-        result.setOptimizationLevel(-1);
-        result.setLanguageVersion(Context.VERSION_1_7);
-        return result;
+    public String getLanguageName() {
+        return "Handlebars";
     }
     
     public void setResourceResolverFactory(

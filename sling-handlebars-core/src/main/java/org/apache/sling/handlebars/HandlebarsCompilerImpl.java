@@ -1,42 +1,32 @@
 package org.apache.sling.handlebars;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.StringReader;
 import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.Map;
 
 import javax.jcr.Node;
-import javax.jcr.PathNotFoundException;
 import javax.jcr.Property;
 import javax.jcr.RepositoryException;
-import javax.jcr.ValueFormatException;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.time.StopWatch;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.sling.api.resource.LoginException;
-import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.commons.osgi.PropertiesUtil;
-
-import org.mozilla.javascript.Context;
-import org.mozilla.javascript.Scriptable;
-import org.mozilla.javascript.ScriptableObject;
-import org.osgi.service.component.ComponentContext;
-
 import org.apache.sling.webresource.WebResourceScriptCompiler;
+import org.apache.sling.webresource.WebResourceScriptRunner;
+import org.apache.sling.webresource.WebResourceScriptRunnerFactory;
 import org.apache.sling.webresource.exception.WebResourceCompileException;
 import org.apache.sling.webresource.util.JCRUtils;
 import org.apache.sling.webresource.util.ScriptUtils;
-
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.time.StopWatch;
-
+import org.mozilla.javascript.ScriptableObject;
+import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +36,9 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
     
     @Reference
     private ResourceResolverFactory resourceResolverFactory;
+    
+    @Reference
+    private WebResourceScriptRunnerFactory webResourceScriptRunnerFactory;
     
     private ScriptableObject scope = null;
     
@@ -61,6 +54,7 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
     
     private String handlebarsCachePath;
     
+    private WebResourceScriptRunner scriptRunner;
     
     public void activate(final ComponentContext context) throws Exception
     {
@@ -69,10 +63,30 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
         Dictionary config = context.getProperties();
         handlebarsCompilerPath = PropertiesUtil.toString(config.get(HANDLEBARS_COMPILER_PATH), "/system/handlebars/handlebars.js");
         handlebarsCachePath = PropertiesUtil.toString(config.get(HANDLEBARS_CACHE_PATH), "/var/handlebars");
-        loadHandlebarsCompiler();
+        
+        loadHandlebarsRunner();
+   
         stopWatch.stop();
-        log.debug("Completed Handlebars Compiler Startup " + stopWatch);
+        log.info("Completed Handlebars Compiler Startup " + stopWatch);
     }
+
+	private void loadHandlebarsRunner() throws LoginException,
+			RepositoryException {
+		ResourceResolver resolver = null;
+        try{
+            resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
+            
+            InputStream handlebarsCompilerStream = JCRUtils.getFileResourceAsStream(resolver, handlebarsCompilerPath);
+            this.scriptRunner = this.webResourceScriptRunnerFactory.createRunner("handlebars.js", handlebarsCompilerStream);
+        }
+        finally
+        {
+            if(resolver != null)
+            {
+                resolver.close();
+            }
+        }
+	}
     
     public InputStream compile(InputStream handlebarsStream) throws WebResourceCompileException
     {
@@ -99,29 +113,19 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
                 scriptBuffer.append(ScriptUtils.generateCompileOptionsString(handlebarsCompileOptions));
             }
             scriptBuffer.append(");");
-            StringReader handlebarsReader = new StringReader(scriptBuffer.toString());
+            InputStream handlebarsScriptStream = new ByteArrayInputStream(scriptBuffer.toString().getBytes());
             StopWatch stopWatch = new StopWatch();
             stopWatch.start();
-            Context rhinoContext = getContext();
-            Scriptable scriptScope = rhinoContext.newObject(scope);
-            scriptScope.setPrototype(scope);
-            scriptScope.setParentScope(null);
-            
-            String compiledScript = (String)rhinoContext.evaluateReader(scriptScope, handlebarsReader, "HandlebarsCompile", 1, null);
+
+            String compiledScript = scriptRunner.evaluateScript(handlebarsScriptStream, null);
             compiledScript = "Handlebars.template(" + compiledScript + ");";
             stopWatch.stop();
-            log.debug("Completed Handlebars Precompile " + stopWatch);
+            log.info("Completed Handlebars Precompile " + stopWatch);
             return new ByteArrayInputStream(compiledScript.getBytes());
         }
         catch(Exception e)
         {
            throw new WebResourceCompileException(e);
-        }
-        finally
-        {
-            if (Context.getCurrentContext() != null) {
-                Context.exit();
-            }
         }
     }
     
@@ -157,47 +161,6 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
     public String compiledScriptExtension()
     {
         return "js";
-    }
-    
-    protected void loadHandlebarsCompiler() throws LoginException,
-        PathNotFoundException, RepositoryException, ValueFormatException,
-        IOException {
-        Context rhinoContext = getContext();
-        ResourceResolver resolver = null;
-        try{
-            resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
-            
-            InputStream handlebarsCompilerStream = JCRUtils.getFileResourceAsStream(resolver, handlebarsCompilerPath);
-            scope = (ScriptableObject) rhinoContext.initStandardObjects(null);
-            
-            rhinoContext.evaluateReader(scope, new InputStreamReader(handlebarsCompilerStream), "handlebars.js", 1, null);
-        }
-        finally
-        {
-            if(resolver != null)
-            {
-                resolver.close();
-            }
-        }
-    }
-    
-    /**
-     * 
-     * Retrieves Rhino Context and sets language and optimizations.
-     * 
-     * @return
-     */
-    public Context getContext()
-    {
-        Context result = null;
-        if(Context.getCurrentContext() == null)
-        {
-            Context.enter(); 
-        }
-        result = Context.getCurrentContext();
-        result.setOptimizationLevel(-1);
-        result.setLanguageVersion(Context.VERSION_1_7);
-        return result;
     }
     
     public void setResourceResolverFactory(
