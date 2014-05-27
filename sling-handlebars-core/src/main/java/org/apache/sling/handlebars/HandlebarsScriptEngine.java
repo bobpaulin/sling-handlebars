@@ -23,8 +23,6 @@ import org.slf4j.LoggerFactory;
 
 public class HandlebarsScriptEngine extends AbstractSlingScriptEngine {
     
-    private String handlebarsCompilerPath;
-    
     private WebResourceScriptRunner scriptRunner;
     
     private final Logger log = LoggerFactory.getLogger(getClass());

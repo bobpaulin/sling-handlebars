@@ -16,6 +16,7 @@ import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.commons.osgi.PropertiesUtil;
@@ -48,11 +49,16 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
     @org.apache.felix.scr.annotations.Property(label="Handlebars Cache Path", value="/var/handlebars")
     private final static String HANDLEBARS_CACHE_PATH = "handlebars.cache.path";
     
+    @org.apache.felix.scr.annotations.Property(label = "Handlebars Helper Script Path", value = "/system/handlbars/helpers")
+	private final static String HANDLEBARS_HELPER_PATH = "handlebars.helper.path";
+    
     private final Logger log = LoggerFactory.getLogger(getClass());
     
     private String handlebarsCompilerPath;
     
     private String handlebarsCachePath;
+    
+    private String handlebarsHelperPath;
     
     private WebResourceScriptRunner scriptRunner;
     
@@ -63,6 +69,7 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
         Dictionary config = context.getProperties();
         handlebarsCompilerPath = PropertiesUtil.toString(config.get(HANDLEBARS_COMPILER_PATH), "/system/handlebars/handlebars.js");
         handlebarsCachePath = PropertiesUtil.toString(config.get(HANDLEBARS_CACHE_PATH), "/var/handlebars");
+        handlebarsHelperPath = PropertiesUtil.toString(config.get(HANDLEBARS_HELPER_PATH), "/var/handlebars/helpers");
         
         loadHandlebarsRunner();
    
@@ -77,6 +84,14 @@ public class HandlebarsCompilerImpl implements WebResourceScriptCompiler {
             resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
             
             InputStream handlebarsCompilerStream = JCRUtils.getFileResourceAsStream(resolver, handlebarsCompilerPath);
+            
+			// Load Helpers by using a predefined helper directory and loading
+			// all JS Files
+			Resource handlebarsHelperFolderResource = resolver
+					.getResource(handlebarsHelperPath);
+            HandlebarUtils.processHandlebarHelperFolder(resolver,
+            		handlebarsCompilerStream,
+					handlebarsHelperFolderResource);
             this.scriptRunner = this.webResourceScriptRunnerFactory.createRunner("handlebars.js", handlebarsCompilerStream);
         }
         finally
